@@ -8,6 +8,10 @@ app.use(cors())
 
 const server = http.createServer(app)
 
+// =========================
+// SOCKET SERVER
+// =========================
+
 const io = new Server(server, {
   cors: {
     origin: "*"
@@ -15,7 +19,7 @@ const io = new Server(server, {
 })
 
 // =========================
-// SETTINGS
+// GAME STATE
 // =========================
 
 const SPAWN_INTERVAL = 30 * 60 * 1000
@@ -25,7 +29,7 @@ let turdActive = false
 let spawnTimer = null
 
 function generateTurd() {
-  const margin = 10 // % safe zone from edges
+  const margin = 10 // safe Twitch/OBS margin
 
   return {
     x: margin + Math.random() * (100 - margin * 2),
@@ -55,19 +59,18 @@ function removeTurd() {
 
   console.log("TURD REMOVED")
 
-  // 🔥 tell frontend to hide it
   io.emit("turd", null)
 }
 
 // =========================
-// SOCKET HANDLERS
+// SOCKET LOGIC
 // =========================
 
 io.on("connection", (socket) => {
 
   console.log("viewer connected")
 
-  // send current state
+  // send current state immediately
   socket.emit("turd", turd)
 
   socket.on("click", (data) => {
@@ -84,7 +87,6 @@ io.on("connection", (socket) => {
     const dy = data.y - turd.y
     const distance = Math.sqrt(dx * dx + dy * dy)
 
-    // WIN CONDITION
     if (distance < turd.radius && turdActive) {
 
       turdActive = false
@@ -97,18 +99,21 @@ io.on("connection", (socket) => {
 
       console.log("turd found by:", data.user)
 
-      // 💥 REMOVE TURD IMMEDIATELY
+      // remove instantly
       removeTurd()
     }
   })
 })
 
 // =========================
-// START SERVER
+// START SERVER (RENDER FIX)
 // =========================
 
-server.listen(3001, () => {
-  console.log("Backend running on port 3001")
+const PORT = process.env.PORT || 3001
 
+server.listen(PORT, () => {
+  console.log("Backend running on port", PORT)
+
+  // start first spawn immediately
   spawnTurd()
 })

@@ -4,7 +4,11 @@ const { Server } = require("socket.io")
 const cors = require("cors")
 
 const app = express()
-app.use(cors())
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
 
 const server = http.createServer(app)
 
@@ -14,9 +18,11 @@ const server = http.createServer(app)
 
 const io = new Server(server, {
   cors: {
-    origin: "*"
+    origin: "*",
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type", "Authorization"]
   }
-})
+});
 
 // =========================
 // GAME STATE

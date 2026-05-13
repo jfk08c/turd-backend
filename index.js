@@ -22,7 +22,9 @@ const io = new Server(server, {
 // GAME STATE
 // =========================
 
-const SPAWN_INTERVAL = 30 * 60 * 1000
+const SPAWN_INTERVAL = process.env.TEST_MODE
+  ? 10 * 1000   // 10 seconds for testing
+  : 30 * 60 * 1000
 
 let turd = null
 let turdActive = false

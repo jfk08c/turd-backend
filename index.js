@@ -103,36 +103,38 @@ io.on("connection", (socket) => {
   // send current state immediately
   socket.emit("turd", turd)
 
-  socket.on("click", (data) => {
+ socket.on("click", async (data) => {
 
-    if (!turd || !turdActive) return
+  if (!turd || !turdActive) return
 
-    io.emit("bubble", {
-      x: data.x,
-      y: data.y,
-      user: data.user
+  io.emit("bubble", {
+    x: data.x,
+    y: data.y,
+    user: data.user
+  })
+
+  const dx = data.x - turd.x
+  const dy = data.y - turd.y
+  const distance = Math.sqrt(dx * dx + dy * dy)
+
+  if (distance < turd.radius && turdActive) {
+
+    turdActive = false
+
+    // 🔥 THIS is the important fix
+    const username = await getUsername(data.user)
+
+    io.emit("winner", {
+      user: username,
+      x: turd.x,
+      y: turd.y
     })
 
-    const dx = data.x - turd.x
-    const dy = data.y - turd.y
-    const distance = Math.sqrt(dx * dx + dy * dy)
+    console.log("turd found by:", username)
 
-    if (distance < turd.radius && turdActive) {
-
-      turdActive = false
-
-      io.emit("winner", {
-  user: username,
-  x: turd.x,
-  y: turd.y
+    removeTurd()
+  }
 })
-
-      console.log("turd found by:", data.user)
-
-      // remove instantly
-      removeTurd()
-    }
-  })
 })
 
 // =========================

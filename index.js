@@ -6,8 +6,9 @@ const TWITCH_CLIENT_ID = process.env.TWITCH_CLIENT_ID
 const TWITCH_APP_TOKEN = process.env.TWITCH_APP_TOKEN
 
 async function getUsername(userId) {
-  // Guard clause against empty ids or Opaque viewer tokens (starts with U)
+  // Clear any blank, placeholder, or Opaque tokens immediately
   if (!userId || userId === "anonymous" || userId.startsWith("U")) {
+    console.log("ℹ️ Skipping API lookup: User is anonymous or opaque:", userId);
     return "Someone anonymous";
   }
 
@@ -22,22 +23,24 @@ async function getUsername(userId) {
       }
     );
 
-    // If your Render env token is broken/expired, catch it early
-    if (res.status === 401) {
-      console.error("❌ Twitch Helix API Error: Unauthorized! Your TWITCH_APP_TOKEN is invalid or expired.");
+    const json = await res.json();
+    
+    // 🔍 DEBUG LOG: See exactly what Twitch answers in your Render dashboard
+    console.log("➡️ Twitch API Raw Response Payload:", JSON.stringify(json));
+
+    if (res.status !== 200) {
+      console.error(`❌ Twitch API HTTP error code: ${res.status}`, json);
       return "An authenticated viewer";
     }
 
-    const json = await res.json();
-    
-    // ✅ CORRECT HOOK: Extracts index [0] from data array safely
-    if (json && json.data && json.data.length > 0) {
+    // ✅ FIXED LOOKUP: Correctly pulls the first index [0] out of the response array
+    if (json && json.data && json.data.length > 0 && json.data[0].display_name) {
       return json.data[0].display_name;
     }
     
     return "Someone anonymous";
   } catch (err) {
-    console.error("Twitch API fetch execution failure:", err);
+    console.error("❌ Twitch API fetch network/execution failure:", err);
     return "Someone anonymous";
   }
 }

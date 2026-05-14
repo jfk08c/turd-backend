@@ -6,28 +6,42 @@ const TWITCH_CLIENT_ID = process.env.TWITCH_CLIENT_ID
 const TWITCH_APP_TOKEN = process.env.TWITCH_APP_TOKEN
 
 async function getUsername(userId) {
+  // Guard clause against empty ids or Opaque viewer tokens (starts with U)
+  if (!userId || userId === "anonymous" || userId.startsWith("U")) {
+    return "Someone anonymous";
+  }
+
   try {
     const res = await fetch(
-      `https://api.twitch.tv/helix/users?id=${userId}`,
+      `twitch.tv{userId}`,
       {
         headers: {
           "Client-ID": TWITCH_CLIENT_ID,
           "Authorization": `Bearer ${TWITCH_APP_TOKEN}`
         }
       }
-    )
+    );
 
-    const json = await res.json()
-   if (json && json.data && json.data[0]) {
+    // If your Render env token is broken/expired, catch it early
+    if (res.status === 401) {
+      console.error("❌ Twitch Helix API Error: Unauthorized! Your TWITCH_APP_TOKEN is invalid or expired.");
+      return "An authenticated viewer";
+    }
+
+    const json = await res.json();
+    
+    // ✅ CORRECT HOOK: Extracts index [0] from data array safely
+    if (json && json.data && json.data.length > 0) {
       return json.data[0].display_name;
     }
     
     return "Someone anonymous";
   } catch (err) {
-    console.log("Twitch API error:", err)
-    return "Someone anonymous"
+    console.error("Twitch API fetch execution failure:", err);
+    return "Someone anonymous";
   }
 }
+
 
 const app = express()
 app.use(cors({

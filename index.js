@@ -18,10 +18,14 @@ async function getUsername(userId) {
     )
 
     const json = await res.json()
-    return json?.data?.[0]?.display_name || "Unknown"
+   if (json && json.data && json.data[0]) {
+      return json.data[0].display_name;
+    }
+    
+    return "Someone anonymous";
   } catch (err) {
     console.log("Twitch API error:", err)
-    return "Unknown"
+    return "Someone anonymous"
   }
 }
 

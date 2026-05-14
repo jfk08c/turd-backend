@@ -3,6 +3,9 @@ const http = require("http")
 const { Server } = require("socket.io")
 const cors = require("cors")
 
+const TWITCH_CLIENT_ID = process.env.TWITCH_CLIENT_ID
+const TWITCH_APP_TOKEN = process.env.TWITCH_APP_TOKEN
+
 const app = express()
 
 app.use(cors({
@@ -21,9 +24,49 @@ const io = new Server(server, {
   }
 })
 
-// =========================
-// GAME STATE
-// =========================
+/* =========================
+   USERNAME CACHE (IMPORTANT)
+========================= */
+const userCache = new Map()
+
+async function getUsername(userId) {
+  if (!userId) return "Anonymous"
+
+  // ✅ return cached name instantly
+  if (userCache.has(userId)) {
+    return userCache.get(userId)
+  }
+
+  try {
+    const res = await fetch(
+      `https://api.twitch.tv/helix/users?id=${userId}`,
+      {
+        headers: {
+          "Client-ID": TWITCH_CLIENT_ID,
+          "Authorization": `Bearer ${TWITCH_APP_TOKEN}`
+        }
+      }
+    )
+
+    const json = await res.json()
+
+    const name = json?.data?.[0]?.display_name || userId
+
+    // store in cache
+    userCache.set(userId, name)
+
+    console.log("RESOLVED USER:", userId, "->", name)
+
+    return name
+  } catch (err) {
+    console.log("Twitch lookup failed:", err)
+    return userId
+  }
+}
+
+/* =========================
+   GAME STATE
+========================= */
 
 const SPAWN_INTERVAL = process.env.TEST_MODE
   ? 10 * 1000
@@ -52,7 +95,6 @@ function spawnTurd() {
   io.emit("turd", turd)
 
   if (spawnTimer) clearTimeout(spawnTimer)
-
   spawnTimer = setTimeout(spawnTurd, SPAWN_INTERVAL)
 }
 
@@ -60,14 +102,12 @@ function removeTurd() {
   turd = null
   turdActive = false
 
-  console.log("TURD REMOVED")
-
   io.emit("turd", null)
 }
 
-// =========================
-// SOCKET LOGIC
-// =========================
+/* =========================
+   SOCKET LOGIC
+========================= */
 
 io.on("connection", (socket) => {
   console.log("viewer connected")
@@ -77,15 +117,10 @@ io.on("connection", (socket) => {
   socket.on("click", async (data) => {
     if (!turd || !turdActive) return
 
-    // DEBUG (IMPORTANT)
-    console.log("CLICK RECEIVED:", data)
-
-    const userId = data.user
-
     io.emit("bubble", {
       x: data.x,
       y: data.y,
-      user: userId
+      user: data.user
     })
 
     const dx = data.x - turd.x
@@ -95,24 +130,21 @@ io.on("connection", (socket) => {
     if (distance < turd.radius && turdActive) {
       turdActive = false
 
-      const winnerUser = userId || "Anonymous"
+      // 🔥 REAL USERNAME RESOLUTION
+      const username = await getUsername(data.user)
 
       io.emit("winner", {
-        user: winnerUser,
+        user: username,
         x: turd.x,
         y: turd.y
       })
 
-      console.log("TURD FOUND BY:", winnerUser)
+      console.log("TURD FOUND BY:", username)
 
       removeTurd()
     }
   })
 })
-
-// =========================
-// START SERVER
-// =========================
 
 const PORT = process.env.PORT || 3001
 

@@ -80,18 +80,21 @@ async function getAppToken() {
 async function getUsername(userId) {
   if (!userId) return "Anonymous";
 
-  // already cached
   if (usernameCache.has(userId)) {
     return usernameCache.get(userId);
   }
 
   try {
     const token = await getAppToken();
-
     if (!token) return userId;
 
+    // Remove leading U if present
+    const cleanId = userId.startsWith("U")
+      ? userId.substring(1)
+      : userId;
+
     const res = await fetch(
-      "https://api.twitch.tv/helix/users?id=" + encodeURIComponent(userId),
+      "https://api.twitch.tv/helix/users?id=" + cleanId,
       {
         headers: {
           "Client-ID": TWITCH_CLIENT_ID,
@@ -103,20 +106,16 @@ async function getUsername(userId) {
     const json = await res.json();
 
     const username =
-      json &&
-      json.data &&
-      json.data[0] &&
-      json.data[0].display_name
-        ? json.data[0].display_name
-        : userId;
+      json?.data?.[0]?.display_name || userId;
 
     usernameCache.set(userId, username);
 
-    console.log("👤 Resolved:", userId, "->", username);
+    console.log("Resolved:", userId, "->", username);
 
     return username;
+
   } catch (err) {
-    console.error("❌ Username lookup failed:", err);
+    console.error("Lookup failed:", err);
     return userId;
   }
 }

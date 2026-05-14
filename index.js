@@ -3,77 +3,30 @@ const http = require("http")
 const { Server } = require("socket.io")
 const cors = require("cors")
 
-const TWITCH_CLIENT_ID = process.env.TWITCH_CLIENT_ID
-const TWITCH_APP_TOKEN = process.env.TWITCH_APP_TOKEN
-
-async function getUsername(userId) {
-  // Clear any blank, placeholder, or Opaque tokens immediately
-  if (!userId || userId === "anonymous" || userId.startsWith("U")) {
-    console.log("ℹ️ Skipping API lookup: User is anonymous or opaque:", userId);
-    return "Someone anonymous";
-  }
-
-  try {
-    // ✅ Safe from rendering glitches: Using string concatenation (+) instead of backticks
-    const apiUrl = "twitch.tv" + userId;
-
-    const res = await fetch(
-      apiUrl,
-      {
-        headers: {
-          "Client-ID": TWITCH_CLIENT_ID,
-          "Authorization": "Bearer " + TWITCH_APP_TOKEN
-        }
-      }
-    );
-
-    const json = await res.json();
-    
-    // 🔍 Check your Render logs for this printout to verify the Twitch response
-    console.log("➡️ Twitch API Raw Response Payload:", JSON.stringify(json));
-
-    if (res.status !== 200) {
-      console.error("❌ Twitch API HTTP error code: " + res.status, json);
-      return "An authenticated viewer";
-    }
-
-    // ✅ FIXED LOOKUP: Correctly targets array index item 0 for validation checks
-    if (json && json.data && json.data.length > 0 && json.data[0].display_name) {
-      return json.data[0].display_name;
-    }
-    
-    return "Someone anonymous";
-  } catch (err) {
-    console.error("❌ Twitch API fetch network/execution failure:", err);
-    return "Someone anonymous";
-  }
-}
-
 const app = express()
+
 app.use(cors({
   origin: "*",
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
-}));
+}))
 
 const server = http.createServer(app)
 
-// =========================
-// SOCKET SERVER
-// =========================
 const io = new Server(server, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"],
     allowedHeaders: ["Content-Type", "Authorization"]
   }
-});
+})
 
 // =========================
 // GAME STATE
 // =========================
+
 const SPAWN_INTERVAL = process.env.TEST_MODE
-  ? 10 * 1000   // 10 seconds for testing
+  ? 10 * 1000
   : 30 * 60 * 1000
 
 let turd = null
@@ -81,7 +34,7 @@ let turdActive = false
 let spawnTimer = null
 
 function generateTurd() {
-  const margin = 10 // safe Twitch/OBS margin
+  const margin = 10
 
   return {
     x: margin + Math.random() * (100 - margin * 2),
@@ -93,36 +46,46 @@ function generateTurd() {
 function spawnTurd() {
   turd = generateTurd()
   turdActive = true
+
   console.log("NEW TURD SPAWNED:", turd)
+
   io.emit("turd", turd)
 
   if (spawnTimer) clearTimeout(spawnTimer)
-  spawnTimer = setTimeout(() => {
-    spawnTurd()
-  }, SPAWN_INTERVAL)
+
+  spawnTimer = setTimeout(spawnTurd, SPAWN_INTERVAL)
 }
 
 function removeTurd() {
   turd = null
   turdActive = false
+
   console.log("TURD REMOVED")
+
   io.emit("turd", null)
 }
 
 // =========================
 // SOCKET LOGIC
 // =========================
+
 io.on("connection", (socket) => {
   console.log("viewer connected")
+
   socket.emit("turd", turd)
 
   socket.on("click", async (data) => {
     if (!turd || !turdActive) return
 
+    // DEBUG (IMPORTANT)
+    console.log("CLICK RECEIVED:", data)
+
+    const userId = data.user
+
     io.emit("bubble", {
       x: data.x,
       y: data.y,
-      user: data.user
+      user: userId
     })
 
     const dx = data.x - turd.x
@@ -132,22 +95,27 @@ io.on("connection", (socket) => {
     if (distance < turd.radius && turdActive) {
       turdActive = false
 
-      // Fire profile lookup query
-      const username = await getUsername(data.user)
+      const winnerUser = userId || "Anonymous"
 
       io.emit("winner", {
-        user: username,
+        user: winnerUser,
         x: turd.x,
         y: turd.y
       })
 
-      console.log("turd found by:", username)
+      console.log("TURD FOUND BY:", winnerUser)
+
       removeTurd()
     }
   })
 })
 
+// =========================
+// START SERVER
+// =========================
+
 const PORT = process.env.PORT || 3001
+
 server.listen(PORT, () => {
   console.log("Backend running on port", PORT)
   spawnTurd()

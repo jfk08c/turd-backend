@@ -14,24 +14,26 @@ async function getUsername(userId) {
   }
 
   try {
-    // ✅ FIXED: Corrected string template interpolation syntax
+    // ✅ Safe from rendering glitches: Using string concatenation (+) instead of backticks
+    const apiUrl = "twitch.tv" + userId;
+
     const res = await fetch(
-      `twitch.tv{userId}`,
+      apiUrl,
       {
         headers: {
           "Client-ID": TWITCH_CLIENT_ID,
-          "Authorization": `Bearer ${TWITCH_APP_TOKEN}`
+          "Authorization": "Bearer " + TWITCH_APP_TOKEN
         }
       }
     );
 
     const json = await res.json();
     
-    // 🔍 DEBUG LOG: Inspect this tracking profile inside your Render runtime dashboard
+    // 🔍 Check your Render logs for this printout to verify the Twitch response
     console.log("➡️ Twitch API Raw Response Payload:", JSON.stringify(json));
 
     if (res.status !== 200) {
-      console.error(`❌ Twitch API HTTP error code: ${res.status}`, json);
+      console.error("❌ Twitch API HTTP error code: " + res.status, json);
       return "An authenticated viewer";
     }
 
@@ -71,7 +73,7 @@ const io = new Server(server, {
 // GAME STATE
 // =========================
 const SPAWN_INTERVAL = process.env.TEST_MODE
-  ? 10 * 1000   
+  ? 10 * 1000   // 10 seconds for testing
   : 30 * 60 * 1000
 
 let turd = null
@@ -79,7 +81,8 @@ let turdActive = false
 let spawnTimer = null
 
 function generateTurd() {
-  const margin = 10 
+  const margin = 10 // safe Twitch/OBS margin
+
   return {
     x: margin + Math.random() * (100 - margin * 2),
     y: margin + Math.random() * (100 - margin * 2),
@@ -129,6 +132,7 @@ io.on("connection", (socket) => {
     if (distance < turd.radius && turdActive) {
       turdActive = false
 
+      // Fire profile lookup query
       const username = await getUsername(data.user)
 
       io.emit("winner", {

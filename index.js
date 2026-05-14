@@ -2,6 +2,28 @@ const express = require("express")
 const http = require("http")
 const { Server } = require("socket.io")
 const cors = require("cors")
+const TWITCH_CLIENT_ID = process.env.TWITCH_CLIENT_ID
+const TWITCH_APP_TOKEN = process.env.TWITCH_APP_TOKEN
+
+async function getUsername(userId) {
+  try {
+    const res = await fetch(
+      `https://api.twitch.tv/helix/users?id=${userId}`,
+      {
+        headers: {
+          "Client-ID": TWITCH_CLIENT_ID,
+          "Authorization": `Bearer ${TWITCH_APP_TOKEN}`
+        }
+      }
+    )
+
+    const json = await res.json()
+    return json?.data?.[0]?.display_name || "Unknown"
+  } catch (err) {
+    console.log("Twitch API error:", err)
+    return "Unknown"
+  }
+}
 
 const app = express()
 app.use(cors({
@@ -100,10 +122,10 @@ io.on("connection", (socket) => {
       turdActive = false
 
       io.emit("winner", {
-        user: data.user,
-        x: turd.x,
-        y: turd.y
-      })
+  user: username,
+  x: turd.x,
+  y: turd.y
+})
 
       console.log("turd found by:", data.user)
 

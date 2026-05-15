@@ -1,214 +1,131 @@
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
-const cors = require("cors");
+import express from "express";
+import { createServer } from "http";
+import { Server } from "socket.io";
+import cors from "cors";
+import fetch from "node-fetch"; // Ensure you run: npm install node-fetch
 
-// =========================
-// ENV VARS
-// =========================
-const TWITCH_CLIENT_ID = process.env.TWITCH_CLIENT_ID;
-const TWITCH_CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;
-
-// =========================
-// EXPRESS
-// =========================
 const app = express();
+app.use(cors());
 
-app.use(cors({
-  origin: "*",
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
-
-const server = http.createServer(app);
-
-// =========================
-// SOCKET.IO
-// =========================
-const io = new Server(server, {
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
   cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-    allowedHeaders: ["Content-Type", "Authorization"]
+    origin: "*", // Adjust this to your Twitch extension URI in production
+    methods: ["GET", "POST"]
   }
 });
 
-// =========================
-// TWITCH TOKEN + CACHE
-// =========================
-let twitchToken = null;
-let tokenExpiresAt = 0;
+// 🔴 CONFIGURATION: Replace these with your actual Twitch Developer credentials
+const TWITCH_CLIENT_ID = "YOUR_EXTENSION_CLIENT_ID";
+const TWITCH_CLIENT_SECRET = "YOUR_EXTENSION_CLIENT_SECRET";
+let twitchAppAccessToken = "";
 
-const usernameCache = new Map();
-
-async function getAppToken() {
-  const now = Date.now();
-
-  // reuse token if still valid
-  if (twitchToken && now < tokenExpiresAt) {
-    return twitchToken;
-  }
-
+// 🔄 Helper function to get an App Access Token from Twitch
+async function getTwitchToken() {
   try {
-    const res = await fetch("https://id.twitch.tv/oauth2/token", {
+    const response = await fetch("https://id.twitch.tv/oauth2/token", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body:
-        "client_id=" + encodeURIComponent(TWITCH_CLIENT_ID) +
-        "&client_secret=" + encodeURIComponent(TWITCH_CLIENT_SECRET) +
-        "&grant_type=client_credentials"
+      body: new URLSearchParams({
+        client_id: TWITCH_CLIENT_ID,
+        client_secret: TWITCH_CLIENT_SECRET,
+        grant_type: "client_credentials"
+      })
     });
-
-    const json = await res.json();
-
-    twitchToken = json.access_token;
-
-    // refresh slightly early
-    tokenExpiresAt = Date.now() + ((json.expires_in - 60) * 1000);
-
-    console.log("✅ New Twitch App Token acquired");
-
-    return twitchToken;
+    const data = await response.json();
+    twitchAppAccessToken = data.access_token;
+    console.log("Successfully fetched fresh Twitch API token.");
   } catch (err) {
-    console.error("❌ Failed to get Twitch token:", err);
-    return null;
+    console.error("Error fetching Twitch app token:", err);
   }
 }
 
-async function getUsername(userId) {
-  if (!userId) return "Anonymous";
-
-  if (usernameCache.has(userId)) {
-    return usernameCache.get(userId);
+// 🆔 Helper function to convert numerical Twitch ID to a Display Name
+async function getTwitchUsername(userId) {
+  // If the user didn't share identity or is anonymous, don't ping Twitch
+  if (!userId || userId.startsWith("A") || userId === "Anonymous Viewer") {
+    return "Anonymous Viewer";
   }
 
   try {
-    const token = await getAppToken();
-    if (!token) return userId;
+    if (!twitchAppAccessToken) await getTwitchToken();
 
-    // Remove leading U if present
-    const cleanId = userId.startsWith("U")
-      ? userId.substring(1)
-      : userId;
-
-    const res = await fetch(
-      "https://api.twitch.tv/helix/users?id=" + cleanId,
-      {
-        headers: {
-          "Client-ID": TWITCH_CLIENT_ID,
-          "Authorization": "Bearer " + token
-        }
+    const response = await fetch(`https://api.twitch.tv/helix/users?id=${userId}`, {
+      headers: {
+        "Client-ID": TWITCH_CLIENT_ID,
+        "Authorization": `Bearer ${twitchAppAccessToken}`
       }
-    );
+    });
 
-    const json = await res.json();
+    // Handle token expiration gracefully
+    if (response.status === 401) {
+      await getTwitchToken();
+      return getTwitchUsername(userId); 
+    }
 
-    const username =
-      json?.data?.[0]?.display_name || userId;
-
-    usernameCache.set(userId, username);
-
-    console.log("Resolved:", userId, "->", username);
-
-    return username;
-
+    const data = await response.json();
+    if (data.data && data.data.length > 0) {
+      return data.data[0].display_name; // Returns readable name like "StreamerXYZ"
+    }
+    return "Unknown Viewer";
   } catch (err) {
-    console.error("Lookup failed:", err);
-    return userId;
+    console.error("Twitch API look-up error:", err);
+    return "Viewer (" + userId + ")";
   }
 }
 
-// =========================
-// GAME STATE
-// =========================
-const SPAWN_INTERVAL = process.env.TEST_MODE
-  ? 10 * 1000
-  : 30 * 60 * 1000;
+// 🎮 GAME STATE
+let currentTurd = { x: 50, y: 50 }; // Initial position
 
-let turd = null;
-let turdActive = false;
-let spawnTimer = null;
-
-function generateTurd() {
-  const margin = 10;
-
-  return {
-    x: margin + Math.random() * (100 - margin * 2),
-    y: margin + Math.random() * (100 - margin * 2),
-    radius: 2.5
+// Auto-move the turd randomly every 5 seconds to keep the game alive
+setInterval(() => {
+  currentTurd = {
+    x: Math.floor(Math.random() * 90) + 5,
+    y: Math.floor(Math.random() * 80) + 10
   };
-}
+  io.emit("turd", currentTurd);
+}, 5000);
 
-function spawnTurd() {
-  turd = generateTurd();
-  turdActive = true;
-
-  console.log("💩 NEW TURD SPAWNED:", turd);
-
-  io.emit("turd", turd);
-
-  if (spawnTimer) clearTimeout(spawnTimer);
-
-  spawnTimer = setTimeout(spawnTurd, SPAWN_INTERVAL);
-}
-
-function removeTurd() {
-  turd = null;
-  turdActive = false;
-
-  io.emit("turd", null);
-
-  console.log("💨 TURD REMOVED");
-}
-
-// =========================
-// SOCKET LOGIC
-// =========================
+// 🔌 SOCKET connection handling
 io.on("connection", (socket) => {
-  console.log("viewer connected");
+  console.log(`User connected: ${socket.id}`);
 
-  socket.emit("turd", turd);
+  // Send the current position of the turd immediately upon connecting
+  socket.emit("turd", currentTurd);
 
+  // Handle click attempts from the frontend
   socket.on("click", async (data) => {
-    if (!turd || !turdActive) return;
+    // 1. Broadcast click visual (bubbles) to everyone right away
+    io.emit("bubble", { x: data.x, y: data.y });
 
-    io.emit("bubble", {
-      x: data.x,
-      y: data.y,
-      user: data.user
-    });
+    // 2. Check if the click hit box is close enough to the turd (Collision check)
+    const distanceThreshold = 4.0; // Adjust this percentage to make it easier/harder
+    const dx = Math.abs(data.x - currentTurd.x);
+    const dy = Math.abs(data.y - currentTurd.y);
 
-    const dx = data.x - turd.x;
-    const dy = data.y - turd.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
+    if (dx < distanceThreshold && dy < distanceThreshold) {
+      // 🏆 Winner found! Let's convert their ID to a real username
+      const cleanUsername = await getTwitchUsername(data.user);
 
-    if (distance < turd.radius && turdActive) {
-      turdActive = false;
+      io.emit("winner", { user: cleanUsername });
 
-      const username = await getUsername(data.user);
-
-      io.emit("winner", {
-        user: username,
-        x: turd.x,
-        y: turd.y
-      });
-
-      console.log("🏆 TURD FOUND BY:", username);
-
-      removeTurd();
+      // Move the turd to a new spot instantly since it was found
+      currentTurd = {
+        x: Math.floor(Math.random() * 90) + 5,
+        y: Math.floor(Math.random() * 80) + 10
+      };
+      io.emit("turd", currentTurd);
     }
+  });
+
+  socket.on("disconnect", () => {
+    console.log(`User disconnected: ${socket.id}`);
   });
 });
 
-// =========================
-// START SERVER
-// =========================
-const PORT = process.env.PORT || 3001;
+// Initialize the Twitch API integration setup on start
+getTwitchToken();
 
-server.listen(PORT, () => {
-  console.log("🚀 Backend running on port", PORT);
-
-  spawnTurd();
+const PORT = process.env.PORT || 3000;
+httpServer.listen(PORT, () => {
+  console.log(`Backend server listening on port ${PORT}`);
 });

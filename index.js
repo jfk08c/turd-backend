@@ -29,13 +29,16 @@ async function getTwitchToken() {
 
   try {
     const response = await fetch("https://id.twitch.tv/oauth2/token", {
-      method: "POST",
-      body: new URLSearchParams({
-        client_id: TWITCH_CLIENT_ID,
-        client_secret: TWITCH_CLIENT_SECRET,
-        grant_type: "client_credentials"
-      })
-    });
+    method: "POST",
+     headers: {
+    "Content-Type": "application/x-www-form-urlencoded" // 👈 Add this line to be safe
+  },
+  body: new URLSearchParams({
+    client_id: TWITCH_CLIENT_ID,
+    client_secret: TWITCH_CLIENT_SECRET,
+    grant_type: "client_credentials"
+  })
+});
 
     // 🛑 CRITICAL PROTECTION: Read response as text if status code isn't 200 OK
     if (!response.ok) {

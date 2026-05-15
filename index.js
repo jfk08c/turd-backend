@@ -57,9 +57,15 @@ async function getTwitchToken() {
   }
 }
 
-// 🆔 Helper function to convert numerical Twitch ID to a Display Name smoothly
+// 🆔 Safe Username Lookup with Strict Validation
 async function getTwitchUsername(userId) {
-  if (!userId || userId.startsWith("A") || userId === "Anonymous Viewer") {
+  // 1. Strict input validation
+  if (!userId || 
+      userId === "undefined" || 
+      userId === "null" ||
+      userId === "Anonymous Viewer" || 
+      userId.startsWith("A")) {
+    console.log(`ℹ️ Skipping Helix lookup for anonymous/opaque identifier: ${userId}`);
     return "Anonymous Viewer";
   }
 
@@ -69,7 +75,12 @@ async function getTwitchUsername(userId) {
       if (!tokenCheck) return `Viewer (${userId.substring(0, 5)}...)`;
     }
 
-    const response = await fetch(`https://api.twitch.tv/helix/users?id=${userId}`, {
+    // 2. Clear out any potential hidden spaces or linebreaks in the ID string
+    const cleanId = String(userId).trim();
+
+    console.log(`📡 Requesting Helix profile data for validated ID: ${cleanId}`);
+
+    const response = await fetch(`https://api.twitch.tv/helix/users?id=${cleanId}`, {
       headers: {
         "Client-ID": TWITCH_CLIENT_ID,
         "Authorization": `Bearer ${twitchAppAccessToken}`
@@ -79,13 +90,15 @@ async function getTwitchUsername(userId) {
     if (response.status === 401) {
       console.log("🔄 Token expired. Refreshing...");
       const renewedToken = await getTwitchToken();
-      if (!renewedToken) return `Viewer (${userId.substring(0, 5)}...)`;
-      return getTwitchUsername(userId); 
+      if (!renewedToken) return `Viewer (${cleanId.substring(0, 5)}...)`;
+      return getTwitchUsername(cleanId); 
     }
 
+    // If Twitch still rejects the request body, print the actual reason to the logs
     if (!response.ok) {
-      console.error(`❌ Helix API error status ${response.status}`);
-      return `Viewer (${userId.substring(0, 5)}...)`;
+      const errorResponse = await response.text();
+      console.error(`❌ Helix API error status ${response.status}:`, errorResponse);
+      return `Viewer (${cleanId.substring(0, 5)}...)`;
     }
 
     const data = await response.json();

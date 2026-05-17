@@ -53,24 +53,33 @@ async function getTwitchToken() {
 }
 
 // 🎮 GAME STATE
-let currentTurd = { x: 50, y: 50 };
+// 🎯 UPDATE: Initialized with a random coordinate instead of fixed (50, 50) center
+let currentTurd = {
+  x: Math.floor(Math.random() * 80) + 10,
+  y: Math.floor(Math.random() * 70) + 15
+};
+console.log(`🎲 Initial target hidden at random starting position: X:${currentTurd.x}, Y:${currentTurd.y}`);
 
+// Automatically generate a new target position every 30 minutes
 setInterval(() => {
   currentTurd = {
     x: Math.floor(Math.random() * 80) + 10,
     y: Math.floor(Math.random() * 70) + 15
   };
+  console.log("⏰ 30-Minute Interval Triggered: A fresh target has been hidden on screen.");
   io.emit("turd", currentTurd);
-}, 1800000);
+}, 1800000); // 30 minutes in milliseconds
 
 // 🔌 CONNECTION ROUTER
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`);
+  // Sends either the active hidden position or 'null' depending on game state
   socket.emit("turd", currentTurd);
 
   socket.on("click", async (data) => {
     io.emit("bubble", { x: data.x, y: data.y });
 
+    // If the target has already been found and is null, block further click checks
     if (!currentTurd) return;
 
     const distanceThreshold = 15.0; 
@@ -86,7 +95,6 @@ io.on("connection", (socket) => {
       let cleanUsername = "Anonymous Viewer";
 
       if (data.user && data.user !== "Anonymous Viewer" && data.user !== "Opaque Viewer") {
-        // If the frontend already converted it to a human-readable text name, use it directly!
         cleanUsername = data.user;
       }
 
@@ -95,12 +103,10 @@ io.on("connection", (socket) => {
       // Emits exactly the string payload without "Viewer" modifications
       io.emit("winner", { user: cleanUsername });
 
-      // Respawn the game target
-      currentTurd = {
-        x: Math.floor(Math.random() * 80) + 10,
-        y: Math.floor(Math.random() * 70) + 15
-      };
-      io.emit("turd", currentTurd);
+      // 🎯 UPDATE: Clear out the active coordinates entirely so it vanishes instantly
+      currentTurd = null;
+      io.emit("turd", null); 
+      console.log("🙈 Target found! Game clearing out. Waiting for next 30-minute window interval reset...");
     }
   });
 

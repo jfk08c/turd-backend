@@ -68,7 +68,7 @@ setInterval(() => {
   };
   console.log("⏰ 30-Minute Interval Triggered: A fresh target has been hidden on screen.");
   io.emit("turd", currentTurd);
-}, 1800000); // 30 minutes in milliseconds
+}, 120000); // 30 minutes in milliseconds
 
 // 🔌 CONNECTION ROUTER
 io.on("connection", (socket) => {

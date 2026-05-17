@@ -52,24 +52,49 @@ async function getTwitchToken() {
   }
 }
 
-// 🎮 GAME STATE
-// Initialize the first game target on startup
+// 🎮 GLOBAL GAME STATE
 let currentTurd = {
   x: Math.floor(Math.random() * 80) + 10,
   y: Math.floor(Math.random() * 70) + 15
 };
 console.log(`🎲 Initial target hidden at random starting position: X:${currentTurd.x}, Y:${currentTurd.y}`);
 
-// ❌ DELETE YOUR OLD GLOBAL SETINTERVAL() ENTIRELY!
+
+// 🎯 THE RELIABLE FIX: Global Reset Function
+// This function sits outside connection scopes, meaning it speaks to the entire server framework!
+function startGameCooldown() {
+  console.log("🙈 Target found! Game cleared. Starting 2-minute global cooldown clock...");
+  
+  // 1. Instantly clear out the coordinates global variable and tell everyone to hide the target
+  currentTurd = null;
+  io.emit("turd", null); 
+
+  // 2. Set a clean, top-level timer to wake the game back up
+  setTimeout(() => {
+    currentTurd = {
+      x: Math.floor(Math.random() * 80) + 10,
+      y: Math.floor(Math.random() * 70) + 15
+    };
+    console.log(`⏰ Cooldown Finished: A fresh target has spawned at X:${currentTurd.x}, Y:${currentTurd.y}`);
+    
+    // Broadcast cleanly using the root io framework down to ALL active sockets
+    io.emit("turd", currentTurd);
+  }, 120000); // 120000 ms = Exactly 2 minutes for testing (Change to 1800000 for 30 mins later!)
+}
+
 
 // 🔌 CONNECTION ROUTER
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`);
+  
+  // Immediately give the connecting user the current state (either a location or null)
   socket.emit("turd", currentTurd);
 
   socket.on("click", async (data) => {
+    // Let click bubbles process instantly across the stream overlay
     io.emit("bubble", { x: data.x, y: data.y });
 
+    // Core validation guard: If the target is null (game is in cooldown), drop the execution branch
     if (!currentTurd) return;
 
     const distanceThreshold = 15.0; 
@@ -84,24 +109,11 @@ io.on("connection", (socket) => {
         cleanUsername = data.user;
       }
 
+      // Shaking hands over the socket framework to display the winner banner
       io.emit("winner", { user: cleanUsername });
 
-      // 1. Instantly clear out the active coordinates so it vanishes
-      currentTurd = null;
-      io.emit("turd", null); 
-      console.log("🙈 Target found! Game cleared. Starting 2-minute cooldown clock...");
-
-      // 2. 🎯 THE RELIABLE FIX: Start a dedicated cooldown timer right here!
-      setTimeout(() => {
-        currentTurd = {
-          x: Math.floor(Math.random() * 80) + 10,
-          y: Math.floor(Math.random() * 70) + 15
-        };
-        console.log(`⏰ Cooldown Finished: A fresh target has spawned at X:${currentTurd.x}, Y:${currentTurd.y}`);
-        
-        // Push it directly down the active socket pipeline
-        io.emit("turd", currentTurd);
-      }, 120000); // 🎯 120000 ms = Exactly 2 minutes for testing (Change to 1800000 for 30 mins later!)
+      // 🎯 Call our new global reset routine safely
+      startGameCooldown();
     }
   });
 

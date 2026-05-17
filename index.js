@@ -61,7 +61,7 @@ setInterval(() => {
     y: Math.floor(Math.random() * 70) + 15
   };
   io.emit("turd", currentTurd);
-}, 5000);
+}, 1800000);
 
 // 🔌 CONNECTION ROUTER
 io.on("connection", (socket) => {

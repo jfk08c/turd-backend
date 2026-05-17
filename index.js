@@ -60,16 +60,13 @@ let currentTurd = {
 console.log(`🎲 Initial target hidden at random starting position: X:${currentTurd.x}, Y:${currentTurd.y}`);
 
 
-// 🎯 THE RELIABLE FIX: Global Reset Function
-// This function sits outside connection scopes, meaning it speaks to the entire server framework!
+// 🎯 GLOBAL COOLDOWN ROUTINE
 function startGameCooldown() {
   console.log("🙈 Target found! Game cleared. Starting 2-minute global cooldown clock...");
   
-  // 1. Instantly clear out the coordinates global variable and tell everyone to hide the target
   currentTurd = null;
   io.emit("turd", null); 
 
-  // 2. Set a clean, top-level timer to wake the game back up
   setTimeout(() => {
     currentTurd = {
       x: Math.floor(Math.random() * 80) + 10,
@@ -77,27 +74,24 @@ function startGameCooldown() {
     };
     console.log(`⏰ Cooldown Finished: A fresh target has spawned at X:${currentTurd.x}, Y:${currentTurd.y}`);
     
-    // Broadcast cleanly using the root io framework down to ALL active sockets
     io.emit("turd", currentTurd);
-  }, 120000); // 120000 ms = Exactly 2 minutes for testing (Change to 1800000 for 30 mins later!)
+  }, 120000); // 120000 ms = 2 Minutes (Change back to 1800000 for 30 mins later!)
 }
 
 
 // 🔌 CONNECTION ROUTER
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`);
-  
-  // Immediately give the connecting user the current state (either a location or null)
   socket.emit("turd", currentTurd);
 
   socket.on("click", async (data) => {
-    // Let click bubbles process instantly across the stream overlay
     io.emit("bubble", { x: data.x, y: data.y });
 
-    // Core validation guard: If the target is null (game is in cooldown), drop the execution branch
     if (!currentTurd) return;
 
-    const distanceThreshold = 15.0; 
+    // 🎯 THE HITBOX FIX: Changed from 15.0 down to 0.9 
+    // This scales the math down precisely to the 18px dimensions of your asset wrapper!
+    const distanceThreshold = 0.9; 
     const dx = Math.abs(data.x - currentTurd.x);
     const dy = Math.abs(data.y - currentTurd.y);
 
@@ -109,10 +103,7 @@ io.on("connection", (socket) => {
         cleanUsername = data.user;
       }
 
-      // Shaking hands over the socket framework to display the winner banner
       io.emit("winner", { user: cleanUsername });
-
-      // 🎯 Call our new global reset routine safely
       startGameCooldown();
     }
   });

@@ -1,0 +1,29 @@
+Privacy Policy for Turd Hunt Twitch Extension
+
+**Last Updated:** May 25, 2026
+
+This Privacy Policy explains how ItsKerbs ("we", "us", or "our") handles user data for the Turd Hunt Twitch Extension (the "Extension"). We are committed to protecting your privacy while providing a fun, interactive streaming experience.
+
+1. Information We Collect
+To provide the interactive features of this Extension, we utilize the following information:
+* **Twitch User ID and Username:** If you explicitly grant permission by opting into "Identity Linking" within the Extension, we collect your unique Twitch User ID and display name.
+* **Extension Interaction Data:** We collect real-time interaction data (such as button clicks, game inputs, or custom commands) to process game logic and display interactions on the stream overlay.
+
+2. How We Use Your Information
+We use the collected data strictly to operate the Extension's core features, which include:
+* Linking your interactions to your Twitch profile for leaderboard tracking, game state persistence, or stream interaction.
+* Transmitting real-time events to the broadcaster's stream overlay via secure WebSocket connections.
+
+3. Data Storage and Retention
+* Any data required for the functionality of the extension is processed securely through our backend services hosted on Render.
+* We do not sell, rent, or trade your personal information to third parties. 
+* Data is only retained for as long as necessary to maintain the extension's interactive features (e.g., active session data or leaderboard standings).
+
+4. Third-Party Services
+This Extension operates within the Twitch platform. Twitch may collect analytics and data independently under their own Privacy Policy. We do not integrate separate third-party analytics trackers (such as Google Analytics) that track you across the web.
+
+5. Your Choices and Data Deletion
+You can revoke Identity Linking permissions at any time through your Twitch account settings. If you wish to have your specific extension interaction data or leaderboard history deleted from our backend server, please contact the developer via Twitch whispered messages or via [Insert a Contact Method, e.g., Your GitHub Profile or a Business Email].
+
+6. Updates to This Policy
+We may update this Privacy Policy from time to time. Any changes will be reflected with a revised "Last Updated" date at the top of this page.

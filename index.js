@@ -6,6 +6,7 @@ import fetch from "node-fetch";
 
 const app = express();
 app.use(cors());
+app.use(express.json()); // 🔔 REQUIRED: Allows your server to parse JSON payloads from SAMMI
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -79,43 +80,21 @@ function startGameCooldown() {
 }
 
 
-// 🔌 CONNECTION ROUTER
-io.on("connection", (socket) => {
-  console.log(`User connected: ${socket.id}`);
-  socket.emit("turd", currentTurd);
+// 🔔 SAMMI HTTP ENDPOINT (Processes incoming clicks forwarded from SAMMI Core)
+app.post("/api/clicks", (req, res) => {
+  const { username, x, y } = req.body;
 
-  socket.on("click", async (data) => {
-    io.emit("bubble", { x: data.x, y: data.y });
+  // Convert incoming string coordinates from SAMMI to float calculations
+  const clickX = parseFloat(x);
+  const clickY = parseFloat(y);
 
-    if (!currentTurd) return;
+  console.log(`📥 SAMMI Webhook Received -> User: ${username} | X: ${clickX}, Y: ${clickY}`);
 
-    // 🎯 THE HITBOX FIX: Changed from 15.0 down to 0.9 
-    // This scales the math down precisely to the 18px dimensions of your asset wrapper!
+  // 1. Emit the bubble pop animation instantly to your Vercel frontend canvas
+  io.emit("bubble", { x: clickX, y: clickY });
+
+  // 2. Evaluate target boundary calculations
+  if (currentTurd) {
     const distanceThreshold = 0.9; 
-    const dx = Math.abs(data.x - currentTurd.x);
-    const dy = Math.abs(data.y - currentTurd.y);
-
-    if (dx < distanceThreshold && dy < distanceThreshold) {
-      console.log(`🎯 HIT CONFIRMED! User raw payload incoming:`, data.user);
-      
-      let cleanUsername = "Anonymous Viewer";
-      if (data.user && data.user !== "Anonymous Viewer" && data.user !== "Opaque Viewer") {
-        cleanUsername = data.user;
-      }
-
-      io.emit("winner", { user: cleanUsername });
-      startGameCooldown();
-    }
-  });
-
-  socket.on("disconnect", () => {
-    console.log(`User disconnected: ${socket.id}`);
-  });
-});
-
-getTwitchToken();
-
-const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, () => {
-  console.log(`🚀 Backend server listening on port ${PORT}`);
-});
+    const dx = Math.abs(clickX - currentTurd.x);
+    const dy = Math.abs(

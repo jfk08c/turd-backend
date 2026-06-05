@@ -22,33 +22,8 @@ const TWITCH_CHANNEL_ID = "148802278";
 // ==========================================
 // LOCAL USERNAME MEMORY CACHE
 // ==========================================
-// Temporarily saves lookups so we don't spam Twitch APIs on every single click
-const nameCache = {
- // Pre-caches your ID to ensure your personal tests match instantly
-};
-
-// Helper function to turn numeric IDs into readable Twitch names
-async function fetchTwitchUsername(userId) {
-  if (nameCache[userId]) return nameCache[userId];
-
-  try {
-    // Queries Twitch's public unauthenticated passport service
-    const response = await fetch(`https://passport.twitch.tv/api/users/${userId}`);
-    if (!response.ok) throw new Error("User profile not found");
-    
-    const data = await response.json();
-    
-    if (data && data.display_name) {
-      nameCache[userId] = data.display_name; // Store to memory
-      return data.display_name;
-    }
-  } catch (err) {
-    console.log(`⚠️ Username lookup failed for ID ${userId}. Falling back to generic label.`);
-  }
-
-  // Fallback visual label if account data is hidden or restricted
-  return `Viewer #${userId.substring(0, 4)}`;
-}
+// Starts blank. The WebSocket pipeline now populates this dictionary automatically
+const nameCache = {};
 
 // ==========================================
 // GAME STATE ENGINE
@@ -108,15 +83,27 @@ function connectToHeat() {
     console.log("🔥 Connected successfully to Heat click stream!");
   });
 
-  heatSocket.on("message", async (rawData) => {
+  heatSocket.on("message", (rawData) => {
     try {
       const parsedData = JSON.parse(rawData.toString());
       
+      // 🏷️ 1. INTERCEPT HEAT'S USERNAME UPDATES
+      // Whenever users load or interact with Heat, the server transmits an ID-to-Name map
+      if (parsedData.type === "names") {
+        Object.assign(nameCache, parsedData.names);
+        console.log("📋 Memory cache updated with active viewer names from Heat.");
+        return;
+      }
+
       // Filter out non-click telemetry frames
       if (parsedData.type !== "click") return;
       if (!currentTurd) return;
 
       const userIdString = parsedData.id.toString();
+
+      // 🎯 2. ASSIGN CODES TO NAMES NATIVELY
+      // Pull true display name from the auto-populated cache, or fallback to a safety slice string
+      const realUsername = nameCache[userIdString] || `Viewer #${userIdString.substring(0, 4)}`;
 
       // Convert Heat decimal vectors (0.0 - 1.0) into 0-100 percentage parameters
       let x = parseFloat(parsedData.x) * 100;
@@ -136,9 +123,6 @@ function connectToHeat() {
       const dy = Math.abs(y - currentTurd.y);
 
       if (dx < threshold && dy < threshold) {
-        // Resolve the numeric ID into a real name only when someone actually wins
-        const realUsername = await fetchTwitchUsername(userIdString);
-        
         console.log(`🎯 HIT REGISTERED! User: ${realUsername}`);
 
         io.emit("winner", {

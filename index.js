@@ -24,7 +24,7 @@ const TWITCH_CHANNEL_ID = "148802278";
 // ==========================================
 // Temporarily saves lookups so we don't spam Twitch APIs on every single click
 const nameCache = {
-  "148802278": "itskerbs" // Pre-caches your ID to ensure your personal tests match instantly
+ // Pre-caches your ID to ensure your personal tests match instantly
 };
 
 // Helper function to turn numeric IDs into readable Twitch names

@@ -17,7 +17,7 @@ const io = new Server(httpServer, {
 // ==========================================
 // CONFIGURATION
 // ==========================================
-const TWITCH_CHANNEL_ID = "148802278"; 
+const TWITCH_CHANNEL_ID = "162027318"; 
 
 // ==========================================
 // LOCAL USERNAME MAP CACHE

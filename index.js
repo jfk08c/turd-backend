@@ -17,8 +17,38 @@ const io = new Server(httpServer, {
 // ==========================================
 // CONFIGURATION
 // ==========================================
-// 💡 Replace with your numeric Twitch ID (Use a tool like twitchid.info to find it)
 const TWITCH_CHANNEL_ID = "148802278"; 
+
+// ==========================================
+// LOCAL USERNAME MEMORY CACHE
+// ==========================================
+// Temporarily saves lookups so we don't spam Twitch APIs on every single click
+const nameCache = {
+  "148802278": "itskerbs" // Pre-caches your ID to ensure your personal tests match instantly
+};
+
+// Helper function to turn numeric IDs into readable Twitch names
+async function fetchTwitchUsername(userId) {
+  if (nameCache[userId]) return nameCache[userId];
+
+  try {
+    // Queries Twitch's public unauthenticated passport service
+    const response = await fetch(`https://passport.twitch.tv/api/users/${userId}`);
+    if (!response.ok) throw new Error("User profile not found");
+    
+    const data = await response.json();
+    
+    if (data && data.display_name) {
+      nameCache[userId] = data.display_name; // Store to memory
+      return data.display_name;
+    }
+  } catch (err) {
+    console.log(`⚠️ Username lookup failed for ID ${userId}. Falling back to generic label.`);
+  }
+
+  // Fallback visual label if account data is hidden or restricted
+  return `Viewer #${userId.substring(0, 4)}`;
+}
 
 // ==========================================
 // GAME STATE ENGINE
@@ -26,7 +56,6 @@ const TWITCH_CHANNEL_ID = "148802278";
 let currentTurd = null;
 
 function spawnTurd() {
-  // Generates percentage coordinates matching a 0-100 layout scale
   const turd = {
     x: Math.floor(Math.random() * 80) + 10,
     y: Math.floor(Math.random() * 70) + 15
@@ -34,7 +63,7 @@ function spawnTurd() {
 
   currentTurd = turd;
   
-  // Broadcast the new coordinates to all connected frontend clients
+  // Broadcast coordinates to all active frontend browsers
   io.emit("turd", turd);
 
   console.log("💩 NEW TURD SPAWNED AT PERCENTAGES:", turd);
@@ -42,7 +71,7 @@ function spawnTurd() {
 }
 
 function startGameCooldown() {
-  console.log("⏳ Hit confirmed. Cooldown started...");
+  console.log("⏳ Hit confirmed. 2-minute cooldown started...");
 
   currentTurd = null;
   io.emit("turd", null);
@@ -59,7 +88,7 @@ function startGameCooldown() {
 io.on("connection", (socket) => {
   console.log(`🔌 Vercel frontend connected: ${socket.id}`);
 
-  // If the webpage loads AFTER a turd has spawned, sync it immediately
+  // Instantly hands coordinates over if a browser refreshes while a game is live
   if (currentTurd) {
     socket.emit("turd", currentTurd);
     console.log(`📬 Synced active target position with new client [${socket.id}]`);
@@ -79,40 +108,41 @@ function connectToHeat() {
     console.log("🔥 Connected successfully to Heat click stream!");
   });
 
-  heatSocket.on("message", (rawData) => {
+  heatSocket.on("message", async (rawData) => {
     try {
       const parsedData = JSON.parse(rawData.toString());
       
-      // Only process standard click coordinates
+      // Filter out non-click telemetry frames
       if (parsedData.type !== "click") return;
-      
-      // COOLDOWN LOCKOUT: Ignore clicks if a game isn't actively running
       if (!currentTurd) return;
 
-      const username = parsedData.id || "Anonymous";
-      
-      // 🎯 Convert raw Heat decimals (0.0 - 1.0) into matching 0-100 percentages
+      const userIdString = parsedData.id.toString();
+
+      // Convert Heat decimal vectors (0.0 - 1.0) into 0-100 percentage parameters
       let x = parseFloat(parsedData.x) * 100;
       let y = parseFloat(parsedData.y) * 100;
 
       if (isNaN(x) || isNaN(y)) return;
 
-      // Broadcast click burst location to the Vercel frontend immediately
+      // Broadcast interactive popping bubble straight to Vercel canvas layout
       io.emit("bubble", { x, y });
 
       // ==========================================
       // HIT DETECTION MATRIX (0-100 vs 0-100)
       // ==========================================
-      const threshold = 2.5; // Hitbox radius on the percentage map
+      const threshold = 2.5; 
 
       const dx = Math.abs(x - currentTurd.x);
       const dy = Math.abs(y - currentTurd.y);
 
       if (dx < threshold && dy < threshold) {
-        console.log(`🎯 HIT REGISTERED! User: ${username}`);
+        // Resolve the numeric ID into a real name only when someone actually wins
+        const realUsername = await fetchTwitchUsername(userIdString);
+        
+        console.log(`🎯 HIT REGISTERED! User: ${realUsername}`);
 
         io.emit("winner", {
-          user: username,
+          user: realUsername,
           x: currentTurd.x,
           y: currentTurd.y
         });
@@ -120,7 +150,7 @@ function connectToHeat() {
         startGameCooldown();
       }
     } catch (err) {
-      // Safely consume background parsing / keepalive frames
+      // Safely catch backend parsing or structural schema issues
     }
   });
 
@@ -135,7 +165,7 @@ function connectToHeat() {
 }
 
 // ==========================================
-// HEALTH PROBE & PORT ROUTING
+// HEALTH PROBE & ROUTING LISTENER
 // ==========================================
 app.get("/", (req, res) => {
   res.send("Turd Hunt Backend Engine Live");
@@ -145,9 +175,8 @@ const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
   console.log(`🚀 Backend running on port ${PORT}`);
   
-  // Initialize the Heat pipeline
   connectToHeat();
   
-  // Spawn the first target 5 seconds after boot so the web client can stabilize
+  // 5-second stabilization timeout before spawning the very first round asset
   setTimeout(spawnTurd, 5000);
 });

@@ -2,7 +2,7 @@ import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
-import WebSocket from "ws"; // Native WebSockets for Heat
+import WebSocket from "ws"; // 🔌 Native WebSockets for the Heat stream
 
 const app = express();
 app.use(cors());
@@ -17,15 +17,16 @@ const io = new Server(httpServer, {
 // ==========================================
 // CONFIGURATION
 // ==========================================
+// 💡 Replace with your numeric Twitch ID (Use a tool like twitchid.info to find it)
 const TWITCH_CHANNEL_ID = "148802278"; 
 
 // ==========================================
-// GAME STATE
+// GAME STATE ENGINE
 // ==========================================
 let currentTurd = null;
 
 function spawnTurd() {
-  // 🎯 FIX: Generate base percentage coordinates between 10 and 90
+  // Generates percentage coordinates matching a 0-100 layout scale
   const turd = {
     x: Math.floor(Math.random() * 80) + 10,
     y: Math.floor(Math.random() * 70) + 15
@@ -33,7 +34,7 @@ function spawnTurd() {
 
   currentTurd = turd;
   
-  // Send the 0-100 scaled numbers to your React frontend
+  // Broadcast the new coordinates to all connected frontend clients
   io.emit("turd", turd);
 
   console.log("💩 NEW TURD SPAWNED AT PERCENTAGES:", turd);
@@ -41,7 +42,7 @@ function spawnTurd() {
 }
 
 function startGameCooldown() {
-  console.log("⏳ Cooldown started...");
+  console.log("⏳ Hit confirmed. Cooldown started...");
 
   currentTurd = null;
   io.emit("turd", null);
@@ -53,7 +54,20 @@ function startGameCooldown() {
 }
 
 // ==========================================
-// HEAT WEBSOCKET PIPELINE
+// 🔌 SOCKET.IO HANDSHAKE (CATCH LATE-JOINERS)
+// ==========================================
+io.on("connection", (socket) => {
+  console.log(`🔌 Vercel frontend connected: ${socket.id}`);
+
+  // If the webpage loads AFTER a turd has spawned, sync it immediately
+  if (currentTurd) {
+    socket.emit("turd", currentTurd);
+    console.log(`📬 Synced active target position with new client [${socket.id}]`);
+  }
+});
+
+// ==========================================
+// 🗺️ RAW TWITCH HEAT WEBSOCKET PIPELINE
 // ==========================================
 function connectToHeat() {
   const heatUrl = `wss://heat-api.j38.net/channel/${TWITCH_CHANNEL_ID}`;
@@ -69,26 +83,27 @@ function connectToHeat() {
     try {
       const parsedData = JSON.parse(rawData.toString());
       
-      // Only process standard click event frames
+      // Only process standard click coordinates
       if (parsedData.type !== "click") return;
+      
+      // COOLDOWN LOCKOUT: Ignore clicks if a game isn't actively running
       if (!currentTurd) return;
 
       const username = parsedData.id || "Anonymous";
       
-      // 🎯 FIX: Convert raw Heat decimals (0.0 - 1.0) into matching 0-100 percentages
+      // 🎯 Convert raw Heat decimals (0.0 - 1.0) into matching 0-100 percentages
       let x = parseFloat(parsedData.x) * 100;
       let y = parseFloat(parsedData.y) * 100;
 
       if (isNaN(x) || isNaN(y)) return;
 
-      // Send the matching 0-100 percentage bubble down to your React frontend
+      // Broadcast click burst location to the Vercel frontend immediately
       io.emit("bubble", { x, y });
 
       // ==========================================
-      // HIT DETECTION (Now comparing 0-100 vs 0-100!)
+      // HIT DETECTION MATRIX (0-100 vs 0-100)
       // ==========================================
-      // Increased slightly to 2.5 pixels/percent to compensate for raw pixel densities
-      const threshold = 2.5; 
+      const threshold = 2.5; // Hitbox radius on the percentage map
 
       const dx = Math.abs(x - currentTurd.x);
       const dy = Math.abs(y - currentTurd.y);
@@ -105,7 +120,7 @@ function connectToHeat() {
         startGameCooldown();
       }
     } catch (err) {
-      // Safely consume background parsing frames
+      // Safely consume background parsing / keepalive frames
     }
   });
 
@@ -119,15 +134,20 @@ function connectToHeat() {
   });
 }
 
+// ==========================================
+// HEALTH PROBE & PORT ROUTING
+// ==========================================
 app.get("/", (req, res) => {
-  res.send("Turd Hunt backend running");
+  res.send("Turd Hunt Backend Engine Live");
 });
 
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
   console.log(`🚀 Backend running on port ${PORT}`);
+  
+  // Initialize the Heat pipeline
   connectToHeat();
   
-  // Delay the very first spawn by 5 seconds so your Vercel client can load up completely
+  // Spawn the first target 5 seconds after boot so the web client can stabilize
   setTimeout(spawnTurd, 5000);
 });

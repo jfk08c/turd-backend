@@ -17,7 +17,7 @@ const io = new Server(httpServer, {
 // ==========================================
 // CONFIGURATION
 // ==========================================
-const TWITCH_CHANNEL_ID = "YOUR_NUMERIC_TWITCH_ID_HERE"; 
+const TWITCH_CHANNEL_ID = "148802278"; 
 
 // ==========================================
 // GAME STATE

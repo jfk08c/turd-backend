@@ -2,7 +2,7 @@ import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
-import WebSocket from "ws"; // 🔌 Native WebSockets for the Heat stream
+import WebSocket from "ws"; // 🔌 Native WebSockets for Heat stream
 
 const app = express();
 app.use(cors());
@@ -20,10 +20,44 @@ const io = new Server(httpServer, {
 const TWITCH_CHANNEL_ID = "148802278"; 
 
 // ==========================================
-// LOCAL USERNAME MEMORY CACHE
+// LOCAL USERNAME MAP CACHE
 // ==========================================
-// Starts blank. The WebSocket pipeline now populates this dictionary automatically
-const nameCache = {};
+const nameCache = new Map();
+
+// Official Heat translation handler derived from Heat.js
+async function fetchHeatUsername(id) {
+  const idString = id.toString();
+
+  // 1. Check local server memory first
+  if (nameCache.has(idString)) {
+    return nameCache.get(idString);
+  }
+
+  // 2. Handle Heat's native anonymity checks
+  if (idString.startsWith("A")) return "Anonymous";
+  if (idString.startsWith("U")) return "Unverified";
+
+  // 3. Query Heat's official server lookup endpoint
+  try {
+    const url = `https://heat-api.j38.net/user/${idString}`;
+    const response = await fetch(url);
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data && data.display_name) {
+        // Save to cache so we never look up this specific ID again
+        nameCache.set(idString, data.display_name);
+        console.log(`📋 Cache assigned: ${idString} -> ${data.display_name}`);
+        return data.display_name;
+      }
+    }
+  } catch (err) {
+    console.log(`⚠️ Heat API lookup request failed for ID: ${idString}`);
+  }
+
+  // Fallback label if user profile cannot be found
+  return `Viewer #${idString.substring(0, 4)}`;
+}
 
 // ==========================================
 // GAME STATE ENGINE
@@ -37,8 +71,6 @@ function spawnTurd() {
   };
 
   currentTurd = turd;
-  
-  // Broadcast coordinates to all active frontend browsers
   io.emit("turd", turd);
 
   console.log("💩 NEW TURD SPAWNED AT PERCENTAGES:", turd);
@@ -63,7 +95,6 @@ function startGameCooldown() {
 io.on("connection", (socket) => {
   console.log(`🔌 Vercel frontend connected: ${socket.id}`);
 
-  // Instantly hands coordinates over if a browser refreshes while a game is live
   if (currentTurd) {
     socket.emit("turd", currentTurd);
     console.log(`📬 Synced active target position with new client [${socket.id}]`);
@@ -83,35 +114,20 @@ function connectToHeat() {
     console.log("🔥 Connected successfully to Heat click stream!");
   });
 
-  heatSocket.on("message", (rawData) => {
+  heatSocket.on("message", async (rawData) => {
     try {
       const parsedData = JSON.parse(rawData.toString());
       
-      // 🏷️ 1. INTERCEPT HEAT'S USERNAME UPDATES
-      // Whenever users load or interact with Heat, the server transmits an ID-to-Name map
-      if (parsedData.type === "names") {
-        Object.assign(nameCache, parsedData.names);
-        console.log("📋 Memory cache updated with active viewer names from Heat.");
-        return;
-      }
-
-      // Filter out non-click telemetry frames
       if (parsedData.type !== "click") return;
       if (!currentTurd) return;
 
-      const userIdString = parsedData.id.toString();
-
-      // 🎯 2. ASSIGN CODES TO NAMES NATIVELY
-      // Pull true display name from the auto-populated cache, or fallback to a safety slice string
-      const realUsername = nameCache[userIdString] || `Viewer #${userIdString.substring(0, 4)}`;
-
-      // Convert Heat decimal vectors (0.0 - 1.0) into 0-100 percentage parameters
+      // Convert vectors to 0-100 percentage parameters
       let x = parseFloat(parsedData.x) * 100;
       let y = parseFloat(parsedData.y) * 100;
 
       if (isNaN(x) || isNaN(y)) return;
 
-      // Broadcast interactive popping bubble straight to Vercel canvas layout
+      // Trigger standard bubble burst animation instantly over the network
       io.emit("bubble", { x, y });
 
       // ==========================================
@@ -123,6 +139,9 @@ function connectToHeat() {
       const dy = Math.abs(y - currentTurd.y);
 
       if (dx < threshold && dy < threshold) {
+        // 🎯 A HIT! Resolve the official name string from the API right here
+        const realUsername = await fetchHeatUsername(parsedData.id);
+        
         console.log(`🎯 HIT REGISTERED! User: ${realUsername}`);
 
         io.emit("winner", {
@@ -158,9 +177,6 @@ app.get("/", (req, res) => {
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
   console.log(`🚀 Backend running on port ${PORT}`);
-  
   connectToHeat();
-  
-  // 5-second stabilization timeout before spawning the very first round asset
   setTimeout(spawnTurd, 5000);
 });

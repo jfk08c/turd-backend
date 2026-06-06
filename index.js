@@ -86,7 +86,7 @@ function startGameCooldown() {
   setTimeout(() => {
     console.log("🔥 Respawning turd...");
     spawnTurd();
-  }, 1200000); // 2 minutes
+  }, 870000); // 2 minutes
 }
 
 // ==========================================

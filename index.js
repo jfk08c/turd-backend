@@ -78,7 +78,7 @@ function spawnTurd() {
 }
 
 function startGameCooldown() {
-  console.log("⏳ Hit confirmed. 2-minute cooldown started...");
+  console.log("⏳ Hit confirmed. 14.5-minute cooldown started...");
 
   currentTurd = null;
   io.emit("turd", null);
@@ -86,7 +86,7 @@ function startGameCooldown() {
   setTimeout(() => {
     console.log("🔥 Respawning turd...");
     spawnTurd();
-  }, 870000); // 2 minutes
+  }, 870000); // 14 minutes, 30 seconds (Keeps Render alive)
 }
 
 // ==========================================
@@ -114,69 +114,4 @@ function connectToHeat() {
     console.log("🔥 Connected successfully to Heat click stream!");
   });
 
-  heatSocket.on("message", async (rawData) => {
-    try {
-      const parsedData = JSON.parse(rawData.toString());
-      
-      if (parsedData.type !== "click") return;
-      if (!currentTurd) return;
-
-      // Convert vectors to 0-100 percentage parameters
-      let x = parseFloat(parsedData.x) * 100;
-      let y = parseFloat(parsedData.y) * 100;
-
-      if (isNaN(x) || isNaN(y)) return;
-
-      // Trigger standard bubble burst animation instantly over the network
-      io.emit("bubble", { x, y });
-
-      // ==========================================
-      // HIT DETECTION MATRIX (0-100 vs 0-100)
-      // ==========================================
-      const threshold = 2.5; 
-
-      const dx = Math.abs(x - currentTurd.x);
-      const dy = Math.abs(y - currentTurd.y);
-
-      if (dx < threshold && dy < threshold) {
-        // 🎯 A HIT! Resolve the official name string from the API right here
-        const realUsername = await fetchHeatUsername(parsedData.id);
-        
-        console.log(`🎯 HIT REGISTERED! User: ${realUsername}`);
-
-        io.emit("winner", {
-          user: realUsername,
-          x: currentTurd.x,
-          y: currentTurd.y
-        });
-
-        startGameCooldown();
-      }
-    } catch (err) {
-      // Safely catch backend parsing or structural schema issues
-    }
-  });
-
-  heatSocket.on("close", () => {
-    console.log("⚠️ Heat connection lost. Reconnecting in 5 seconds...");
-    setTimeout(connectToHeat, 5000);
-  });
-
-  heatSocket.on("error", (err) => {
-    console.error("❌ Heat WebSocket error:", err.message);
-  });
-}
-
-// ==========================================
-// HEALTH PROBE & ROUTING LISTENER
-// ==========================================
-app.get("/", (req, res) => {
-  res.send("Turd Hunt Backend Engine Live");
-});
-
-const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, () => {
-  console.log(`🚀 Backend running on port ${PORT}`);
-  connectToHeat();
-  setTimeout(spawnTurd, 5000);
-});
+  heatSocket.on("message",

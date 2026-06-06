@@ -114,4 +114,83 @@ function connectToHeat() {
     console.log("🔥 Connected successfully to Heat click stream!");
   });
 
-  heatSocket.on("message",
+  heatSocket.on("message", async (rawData) => {
+    try {
+      const parsedData = JSON.parse(rawData.toString());
+      
+      if (parsedData.type !== "click") return;
+      if (!currentTurd) return;
+
+      // Convert vectors to 0-100 percentage parameters
+      let x = parseFloat(parsedData.x) * 100;
+      let y = parseFloat(parsedData.y) * 100;
+
+      if (isNaN(x) || isNaN(y)) return;
+
+      // Trigger standard bubble burst animation instantly over the network
+      io.emit("bubble", { x, y });
+
+      // ==========================================
+      // HIT DETECTION MATRIX (0-100 vs 0-100)
+      // ==========================================
+      const threshold = 2.5; 
+
+      const dx = Math.abs(x - currentTurd.x);
+      const dy = Math.abs(y - currentTurd.y);
+
+      if (dx < threshold && dy < threshold) {
+        const userIdString = parsedData.id.toString();
+        
+        // 1. Lock the game loop down instantly so spam-clicks can't double-trigger
+        startGameCooldown();
+
+        console.log(`🎯 HIT REGISTERED! Resolving identity for ID: ${userIdString}...`);
+
+        let realUsername = nameCache.get(userIdString);
+
+        // 2. Synchronously force the server to wait for the real name lookup
+        if (!realUsername) {
+          try {
+            realUsername = await fetchHeatUsername(parsedData.id);
+          } catch (fetchError) {
+            realUsername = "A Viewer"; // Emergency fallback if Heat API drops completely
+          }
+        }
+        
+        console.log(`🏆 Broadcast verified victory banner: ${realUsername}`);
+
+        // 3. Send the finalized name directly to OBS now that it's 100% resolved
+        io.emit("winner", {
+          user: realUsername,
+          x: currentTurd.x,
+          y: currentTurd.y
+        });
+      }
+    } catch (err) {
+      // Safely catch backend parsing or structural schema issues
+    }
+  });
+
+  heatSocket.on("close", () => {
+    console.log("⚠️ Heat connection lost. Reconnecting in 5 seconds...");
+    setTimeout(connectToHeat, 5000);
+  });
+
+  heatSocket.on("error", (err) => {
+    console.error("❌ Heat WebSocket error:", err.message);
+  });
+}
+
+// ==========================================
+// HEALTH PROBE & ROUTING LISTENER
+// ==========================================
+app.get("/", (req, res) => {
+  res.send("Turd Hunt Backend Engine Live");
+});
+
+const PORT = process.env.PORT || 3000;
+httpServer.listen(PORT, () => {
+  console.log(`🚀 Backend running on port ${PORT}`);
+  connectToHeat();
+  setTimeout(spawnTurd, 5000);
+});

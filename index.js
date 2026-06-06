@@ -141,33 +141,42 @@ function connectToHeat() {
       if (dx < threshold && dy < threshold) {
         const userIdString = parsedData.id.toString();
         
-        // 1. Lock the game loop down instantly so spam-clicks can't double-trigger
+        // 1. Save the exact target position BEFORE clearing currentTurd
+        const winningX = currentTurd.x;
+        const winningY = currentTurd.y;
+
+        // 2. Lock down the game loop instantly so duplicate clicks can't trigger double wins
         startGameCooldown();
 
         console.log(`🎯 HIT REGISTERED! Resolving identity for ID: ${userIdString}...`);
 
         let realUsername = nameCache.get(userIdString);
 
-        // 2. Synchronously force the server to wait for the real name lookup
+        // 3. Force the server to wait for the clean username lookup from the API
         if (!realUsername) {
           try {
             realUsername = await fetchHeatUsername(parsedData.id);
           } catch (fetchError) {
-            realUsername = "A Viewer"; // Emergency fallback if Heat API drops completely
+            realUsername = "A Viewer"; // Emergency fallback if the API fails entirely
           }
         }
         
+        // 4. Fallback check to guarantee realUsername is a valid string
+        if (!realUsername || typeof realUsername !== "string") {
+          realUsername = `Viewer #${userIdString.substring(0, 4)}`;
+        }
+
         console.log(`🏆 Broadcast verified victory banner: ${realUsername}`);
 
-        // 3. Send the finalized name directly to OBS now that it's 100% resolved
+        // 5. Send the completed dataset down to OBS with valid coordinates
         io.emit("winner", {
           user: realUsername,
-          x: currentTurd.x,
-          y: currentTurd.y
+          x: winningX,
+          y: winningY
         });
       }
     } catch (err) {
-      // Safely catch backend parsing or structural schema issues
+      console.error("❌ Error inside message handler:", err);
     }
   });
 
